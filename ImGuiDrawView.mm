@@ -307,13 +307,17 @@ void drawPlayerRootESP(ImDrawList* draw_list) {
         ImU32 themePink = ESP_LINE_COLOR;
 
         // ========== РИСУЕМ В ОТДЕЛЬНОМ ОКНЕ ==========
-        // Копируем массивы, чтобы передать их в блок
+        // Копируем данные в отдельные переменные, а не массивы, и передаем как указатели
         ImVec2 ptsCopy[8];
         bool cornerVisibleCopy[8];
         for (int k = 0; k < 8; k++) {
             ptsCopy[k] = pts[k];
             cornerVisibleCopy[k] = cornerVisible[k];
         }
+        
+        // Передаем указатели на массивы
+        ImVec2* ptsPtr = ptsCopy;
+        bool* cornerPtr = cornerVisibleCopy;
         
         [[ESPRenderer sharedInstance] renderESP:^(CGContextRef context) {
             if (esp_line) {
@@ -327,7 +331,7 @@ void drawPlayerRootESP(ImDrawList* draw_list) {
             }
 
             if (esp_box_2d) DrawESPBox2D(context, ImVec2(minX, minY), ImVec2(maxX, maxY), themePink, dynamicThickness);
-            if (esp_box_3d) DrawESPBox3D(context, ptsCopy, cornerVisibleCopy, themePink, dynamicThickness);
+            if (esp_box_3d) DrawESPBox3D(context, ptsPtr, cornerPtr, themePink, dynamicThickness);
             if (esp_corners) DrawESPCorners(context, ImVec2(minX, minY), ImVec2(maxX, maxY), std::max(8.0f, std::min(maxX-minX, maxY-minY)*0.25f), themePink, dynamicThickness);
             if (esp_distance_enabled) DrawESPDistance(context, ImVec2(w2sPosition.x, w2sPosition.y), distToCamera, ESP_DISTANCE_COLOR);
         }];
@@ -342,6 +346,7 @@ void drawPlayerRootESP(ImDrawList* draw_list) {
     }
 }
 
+// ОСТАЛЬНАЯ ЧАСТЬ ФАЙЛА (классы, методы) - БЕЗ ИЗМЕНЕНИЙ
 @interface ImGuiMTKView : MTKView
 @end
 
