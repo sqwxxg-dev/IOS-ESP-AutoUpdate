@@ -1,12 +1,16 @@
 #ifndef DRAW_HELPERS_MM
 #define DRAW_HELPERS_MM
 
-// Note: This file is included directly in ImGuiDrawView.mm 
-// to share the IL2CPP/Hooks.h definitions without multiple definition errors.
+// ========== ПОДКЛЮЧАЕМ ВСЕ НЕОБХОДИМЫЕ ЗАГОЛОВКИ ==========
 #import <string>
 #import <vector>
 #import <algorithm>
 #import <UIKit/UIKit.h>
+#include "IMGUI/imgui.h"          // Для ImVec2, ImU32, IM_COL32
+#include "IL2CPP/Vector3.h"       // Для Vector3
+#include "IL2CPP/Hooks.h"         // Для monoArray, Object_FindObjectsOfType
+#include "ESPConfig.h"            // Для макросов CREATE_TYPE_STRING
+// ===========================================================
 
 // ========== ВСПОМОГАТЕЛЬНАЯ ФУНКЦИЯ ДЛЯ ПРЕОБРАЗОВАНИЯ ЦВЕТА ==========
 static inline UIColor* UIColorFromImU32(ImU32 color) {
@@ -132,6 +136,7 @@ void DrawESPDistance(CGContextRef context, ImVec2 position, float distance, ImU3
 void DrawESPSkeleton(CGContextRef context, void* camera, void* gameObject, Vector3 cameraPosition, float distanceToCamera) {
     if (!context || !gameObject) return;
     
+    // Используем правильные макросы из ESPConfig.h
     void* GameObjectType = Type_GetType(String_CreateString(CREATE_TYPE_STRING(GAMEOBJECT_CLASS_NAME, GAMEOBJECT_ASSEMBLY_NAME)));
     if (!GameObjectType) return;
     
