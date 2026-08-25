@@ -29,20 +29,16 @@ include $(THEOS)/makefiles/common.mk
 
 TWEAK_NAME = IL2CPPMenu
 
-$(TWEAK_NAME)_FRAMEWORKS =  UIKit Foundation Security QuartzCore CoreGraphics CoreText  AVFoundation Accelerate GLKit SystemConfiguration GameController
+$(TWEAK_NAME)_FRAMEWORKS = UIKit Foundation Security QuartzCore CoreGraphics CoreText AVFoundation Accelerate GLKit SystemConfiguration GameController
 
-$(TWEAK_NAME)_CCFLAGS = -std=c++14 -fno-rtti -DNDEBUG -Wno-ignored-attributes -Wno-format
-$(TWEAK_NAME)_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Wno-unused-value -Wno-ignored-attributes
+# ===== КЛЮЧЕВЫЕ ИЗМЕНЕНИЯ: ФЛАГИ ДЛЯ ПОДАВЛЕНИЯ ОШИБОК И C++17 =====
+$(TWEAK_NAME)_CCFLAGS = -std=c++17 -fno-rtti -DNDEBUG -Wno-ignored-attributes -Wno-format -Wno-error=nontrivial-memcall -Wno-error=deprecated-declarations
+$(TWEAK_NAME)_CFLAGS = -fobjc-arc -Wno-deprecated-declarations -Wno-unused-variable -Wno-unused-value -Wno-ignored-attributes -Wno-error
 
+# ===== ОСНОВНОЕ ИЗМЕНЕНИЕ: ДОБАВЛЕН ESPRenderer.mm =====
+$(TWEAK_NAME)_FILES = ImGuiDrawView.mm DrawHelpers.mm ESPRenderer.mm $(wildcard Esp/*.mm) $(wildcard Esp/*.m) $(wildcard IMGUI/*.cpp) $(wildcard IMGUI/*.mm) $(wildcard Init/*.mm) $(wildcard IL2CPP/*.mm) $(wildcard Resources/Textures/Logo/*.mm)
 
-
-$(TWEAK_NAME)_FILES = ImGuiDrawView.mm $(wildcard Esp/*.mm) $(wildcard Esp/*.m) $(wildcard IMGUI/*.cpp) $(wildcard IMGUI/*.mm) $(wildcard Init/*.mm) $(wildcard IL2CPP/*.mm) $(wildcard Resources/Textures/Logo/*.mm)
-
-
-
-#$(TWEAK_NAME)_LIBRARIES += substrate
+# $(TWEAK_NAME)_LIBRARIES += substrate
 # GO_EASY_ON_ME = 1
 
 include $(THEOS_MAKE_PATH)/tweak.mk
-
-
