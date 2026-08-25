@@ -1,5 +1,6 @@
 // ESPRenderer.mm
 #import "ESPRenderer.h"
+#import <QuartzCore/QuartzCore.h>
 
 @interface ESPRenderer ()
 @property (nonatomic, strong) UIWindow *espWindow;
@@ -34,6 +35,10 @@
         
         NSLog(@"[ESP] Overlay window setup complete");
     });
+}
+
+- (UIWindow *)getESPWindow {
+    return self.espWindow;
 }
 
 - (void)renderESP:(void (^)(CGContextRef))drawBlock {
