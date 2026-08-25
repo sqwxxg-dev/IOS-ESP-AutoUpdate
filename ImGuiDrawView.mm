@@ -21,6 +21,7 @@
 #include "IL2CPP/Matrix4x4.h"
 #include "IL2CPP/Monostring.h"
 #include "ESPConfig.h"
+#import "ESPRenderer.h" // <-- ДОБАВЛЕНО
 
 #define kWidth  [UIScreen mainScreen].bounds.size.width
 #define kHeight [UIScreen mainScreen].bounds.size.height
@@ -69,7 +70,6 @@ static const ImVec4 COLOR_HEADER_ACTIVE = ImVec4(0.15f, 0.15f, 0.15f, 1.00f);  /
 #include <string.h>
 #include <float.h>
 
-
 ImFont* verdana_smol;
 #define kScale [UIScreen mainScreen].scale
 
@@ -85,14 +85,12 @@ static bool esp_corners = false;
 static int esp_line_position = 0;
 static float ui_scale = 0.70f;
 
-
 void* getMainCamera() {
     if (!selectedCamera) {
         selectedCamera = Camera_get_main();
     }
     return selectedCamera;
 }
-
 
 void updateESPVariables(bool line, bool distance, bool skeleton, int linePos, bool box2d, bool box3d, bool corners) {
     esp_line = line;
@@ -103,9 +101,6 @@ void updateESPVariables(bool line, bool distance, bool skeleton, int linePos, bo
     esp_box_3d = box3d;
     esp_corners = corners;
 }
-
-
-
 
 struct PlayerData {
     void* object;
@@ -311,31 +306,33 @@ void drawPlayerRootESP(ImDrawList* draw_list) {
         float dynamicThickness = std::max(0.8f, 1.2f - (distToCamera * 0.02f));
         ImU32 themePink = ESP_LINE_COLOR;
 
-        if (esp_line) {
-            ImVec2 start;
-            switch (esp_line_position) {
-                case 0: start = ImVec2(kWidth * 0.5f, 0.0f); break; 
-                case 1: start = ImVec2(kWidth * 0.5f, kHeight * 0.5f); break; 
-                default: start = ImVec2(kWidth * 0.5f, kHeight); break;
+        // ========== ИЗМЕНЕНИЕ: РИСУЕМ В ОТДЕЛЬНОМ ОКНЕ ==========
+        [[ESPRenderer sharedInstance] renderESP:^(CGContextRef context) {
+            if (esp_line) {
+                ImVec2 start;
+                switch (esp_line_position) {
+                    case 0: start = ImVec2(kWidth * 0.5f, 0.0f); break; 
+                    case 1: start = ImVec2(kWidth * 0.5f, kHeight * 0.5f); break; 
+                    default: start = ImVec2(kWidth * 0.5f, kHeight); break;
+                }
+                DrawESPLine(context, start, ImVec2(w2sPosition.x, w2sPosition.y), themePink, ESP_LINE_THICKNESS);
             }
-            DrawESPLine(draw_list, start, ImVec2(w2sPosition.x, w2sPosition.y), themePink, ESP_LINE_THICKNESS);
-        }
 
-        if (esp_box_2d) DrawESPBox2D(draw_list, ImVec2(minX, minY), ImVec2(maxX, maxY), themePink, dynamicThickness);
-        if (esp_box_3d) DrawESPBox3D(draw_list, pts, cornerVisible, themePink, dynamicThickness);
-        if (esp_corners) DrawESPCorners(draw_list, ImVec2(minX, minY), ImVec2(maxX, maxY), std::max(8.0f, std::min(maxX-minX, maxY-minY)*0.25f), themePink, dynamicThickness);
-        if (esp_distance_enabled) DrawESPDistance(draw_list, ImVec2(w2sPosition.x, w2sPosition.y), distToCamera, ESP_DISTANCE_COLOR);
+            if (esp_box_2d) DrawESPBox2D(context, ImVec2(minX, minY), ImVec2(maxX, maxY), themePink, dynamicThickness);
+            if (esp_box_3d) DrawESPBox3D(context, pts, cornerVisible, themePink, dynamicThickness);
+            if (esp_corners) DrawESPCorners(context, ImVec2(minX, minY), ImVec2(maxX, maxY), std::max(8.0f, std::min(maxX-minX, maxY-minY)*0.25f), themePink, dynamicThickness);
+            if (esp_distance_enabled) DrawESPDistance(context, ImVec2(w2sPosition.x, w2sPosition.y), distToCamera, ESP_DISTANCE_COLOR);
+        }];
+        // =====================================================
     }
     if (esp_skeleton) DrawESPSkeleton(draw_list, camera, (void*)1, cameraPosition, 0.0f);
 }
-
 
 @interface ImGuiMTKView : MTKView
 @end
 
 @implementation ImGuiMTKView
 - (BOOL)pointInside:(CGPoint)point withEvent:(UIEvent *)event {
-    // Check if any subviews (like our toggle button) handle the touch
     for (UIView *subview in self.subviews) {
         if (!subview.hidden && subview.userInteractionEnabled && [subview pointInside:[self convertPoint:point toView:subview] withEvent:event]) {
             return YES;
@@ -367,16 +364,10 @@ void drawPlayerRootESP(ImDrawList* draw_list) {
 @property (nonatomic, strong) UIButton *toggleMenuButton;
 @end
 
-
 @implementation ImGuiDrawView
 
 static bool show_s0 = false;
-
-
-
-
 static bool MenDeal = true;
-
 
 - (instancetype)initWithNibName:(nullable NSString *)nibNameOrNil bundle:(nullable NSBundle *)nibBundleOrNil
 {
@@ -463,9 +454,6 @@ static bool MenDeal = true;
 
 - (void)loadView
 {
-
- 
-
     CGFloat w = [UIScreen mainScreen].bounds.size.width;
     CGFloat h = [UIScreen mainScreen].bounds.size.height;
     self.view = [[ImGuiMTKView alloc] initWithFrame:CGRectMake(0, 0, w, h)];
@@ -480,56 +468,56 @@ static bool MenDeal = true;
     self.mtkView.backgroundColor = [UIColor clearColor];
     self.mtkView.clipsToBounds = YES;
 
+    // ===== ИНИЦИАЛИЗАЦИЯ ESP-ОКНА =====
+    [[ESPRenderer sharedInstance] setupOverlayWindow];
+
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [IL2CPPInit startPrecheck];
     });
     
-    // Delay button setup to ensure logo texture is loaded
+    // ===== КНОПКА ТЕПЕРЬ В ESP-ОКНЕ =====
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2.0 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
-        [self setupToggleMenuButton];
+        [self setupToggleMenuButtonInESPWindow];
     });
 }
 
-
-- (void)setupToggleMenuButton {
-    if (self.toggleMenuButton) return;
+// ===== НОВЫЙ МЕТОД ДЛЯ КНОПКИ В ESP-ОКНЕ =====
+- (void)setupToggleMenuButtonInESPWindow {
+    UIWindow *espWindow = [[ESPRenderer sharedInstance] getESPWindow];
+    if (!espWindow) return;
     
     CGFloat btnSize = 25.0f;
-    self.toggleMenuButton = [UIButton buttonWithType:UIButtonTypeCustom];
-    self.toggleMenuButton.frame = CGRectMake(20, 100, btnSize, btnSize);
-    self.toggleMenuButton.layer.cornerRadius = 8.0f;
-    self.toggleMenuButton.backgroundColor = [UIColor colorWithRed:0.06f green:0.06f blue:0.06f alpha:0.85f];
-    self.toggleMenuButton.layer.borderWidth = 2.0f;
-    self.toggleMenuButton.layer.borderColor = [UIColor colorWithRed:1.0f green:0.0f blue:0.28f alpha:1.0f].CGColor;
-    self.toggleMenuButton.clipsToBounds = YES;
+    UIButton *toggleMenuButton = [UIButton buttonWithType:UIButtonTypeCustom];
+    toggleMenuButton.frame = CGRectMake(20, 100, btnSize, btnSize);
+    toggleMenuButton.layer.cornerRadius = 8.0f;
+    toggleMenuButton.backgroundColor = [UIColor colorWithRed:0.06f green:0.06f blue:0.06f alpha:0.85f];
+    toggleMenuButton.layer.borderWidth = 2.0f;
+    toggleMenuButton.layer.borderColor = [UIColor colorWithRed:1.0f green:0.0f blue:0.28f alpha:1.0f].CGColor;
+    toggleMenuButton.clipsToBounds = YES;
     
     // Get Logo for Button
     id<MTLTexture> mtlLogo = (__bridge id<MTLTexture>)(void *)getLogoTexture();
     if (mtlLogo) {
         UIImage *logoImg = createUIImageFromMTLTexture(mtlLogo);
         if (logoImg) {
-            [self.toggleMenuButton setImage:logoImg forState:UIControlStateNormal];
-            self.toggleMenuButton.imageView.contentMode = UIViewContentModeScaleAspectFit;
-            self.toggleMenuButton.imageEdgeInsets = UIEdgeInsetsMake(5, 5, 5, 5);
+            [toggleMenuButton setImage:logoImg forState:UIControlStateNormal];
+            toggleMenuButton.imageView.contentMode = UIViewContentModeScaleAspectFit;
+            toggleMenuButton.imageEdgeInsets = UIEdgeInsetsMake(5, 5, 5, 5);
         }
     }
     
-    [self.toggleMenuButton addTarget:self action:@selector(toggleMenu) forControlEvents:UIControlEventTouchUpInside];
+    [toggleMenuButton addTarget:self action:@selector(toggleMenu) forControlEvents:UIControlEventTouchUpInside];
+    [espWindow addSubview:toggleMenuButton];
     
     // Add Pan Gesture for dragging
     UIPanGestureRecognizer *panGesture = [[UIPanGestureRecognizer alloc] initWithTarget:self action:@selector(handlePan:)];
-    [self.toggleMenuButton addGestureRecognizer:panGesture];
-    
-    [self.view addSubview:self.toggleMenuButton];
+    [toggleMenuButton addGestureRecognizer:panGesture];
 }
 
+// ===== ИСПРАВЛЕННЫЙ toggleMenu (убрана старая кнопка) =====
 - (void)toggleMenu {
     MenDeal = !MenDeal;
     NSLog(@"[GF] Toggle Menu - MenDeal is now: %d", MenDeal);
-    
-    // Ensure button stays on top and interactive
-    [self.view bringSubviewToFront:self.toggleMenuButton];
-    self.toggleMenuButton.userInteractionEnabled = YES;
 }
 
 - (void)handlePan:(UIPanGestureRecognizer *)pangesture {
@@ -648,8 +636,6 @@ static bool MenDeal = true;
 
 - (void)drawInMTKView:(MTKView*)view
 {
-   
-    
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize.x = view.bounds.size.width;
     io.DisplaySize.y = view.bounds.size.height;
@@ -660,116 +646,110 @@ static bool MenDeal = true;
     
     id<MTLCommandBuffer> commandBuffer = [self.commandQueue commandBuffer];
     
-
     static bool esp_enabled = false;
     static bool esp_box_2d = false;
     static bool esp_box_3d = false;
     static bool esp_corners = false;
     
+    if ([IL2CPPInit isInitializationComplete]) {
+        [self.view setUserInteractionEnabled:YES];
+    }
+
+    MTLRenderPassDescriptor* renderPassDescriptor = view.currentRenderPassDescriptor;
+    if (renderPassDescriptor != nil)
+    {
+        id <MTLRenderCommandEncoder> renderEncoder = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
+        [renderEncoder pushDebugGroup:@"ImGui Jane"];
+
+        ImGui_ImplMetal_NewFrame(renderPassDescriptor);
+        ImGui::NewFrame();
         
-        if ([IL2CPPInit isInitializationComplete]) {
-            [self.view setUserInteractionEnabled:YES];
+        [IL2CPPInit updateInitializationProgress];
+        if ([IL2CPPInit isShowingInitOverlay] && ![IL2CPPInit isInitializationComplete]) {
+            [self drawInitializationOverlay];
         }
+        
+        ImFont* font = ImGui::GetFont();
+        
+        // Render ESP with fixed font scale (ignoring user settings)
+        if (font && font->FontSize > 0) {
+            font->Scale = 12.f / 18.0f; // Fixed scale for ESP
+        }
+        
+        CGFloat x = (([UIScreen mainScreen].bounds.size.width) - 360) / 2;
+        CGFloat y = (([UIScreen mainScreen].bounds.size.height) - 300) / 2;
+        
+        ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowSize(ImVec2(400, 300), ImGuiCond_FirstUseEver);
+        
+        if (MenDeal == true && [IL2CPPInit isInitializationComplete])
+        {            
+            // Set font scale to user preference for the main menu content
+            if (font) font->Scale = ui_scale;
 
-        MTLRenderPassDescriptor* renderPassDescriptor = view.currentRenderPassDescriptor;
-        if (renderPassDescriptor != nil)
-        {
-            id <MTLRenderCommandEncoder> renderEncoder = [commandBuffer renderCommandEncoderWithDescriptor:renderPassDescriptor];
-            [renderEncoder pushDebugGroup:@"ImGui Jane"];
+            ImGui::Begin("GoodFeelings | https://goodfeelings.cc", &MenDeal, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse);
 
-            ImGui_ImplMetal_NewFrame(renderPassDescriptor);
-            ImGui::NewFrame();
+            ImDrawList* drawList = ImGui::GetWindowDrawList();
+            ImVec2 windowPos = ImGui::GetWindowPos();
+            ImVec2 windowSize = ImGui::GetWindowSize();
+            float headerHeight = 25.0f;
+            float footerHeight = 25.0f;
+            float contentPadding = 10.0f;
             
-            [IL2CPPInit updateInitializationProgress];
-            if ([IL2CPPInit isShowingInitOverlay] && ![IL2CPPInit isInitializationComplete]) {
-                [self drawInitializationOverlay];
+            // Draw Header Background
+            drawList->AddRectFilled(windowPos, ImVec2(windowPos.x + windowSize.x, windowPos.y + headerHeight), ImGui::ColorConvertFloat4ToU32(COLOR_TITLE_BG), ImGui::GetStyle().WindowRounding, ImDrawFlags_RoundCornersTop);
+            drawList->AddLine(ImVec2(windowPos.x, windowPos.y + headerHeight), ImVec2(windowPos.x + windowSize.x, windowPos.y + headerHeight), ImGui::ColorConvertFloat4ToU32(COLOR_BORDER));
+
+            // Title Text on the Left
+            const char* leftText = "GoodFeelings";
+            ImVec2 leftTextSize = ImGui::CalcTextSize(leftText);
+            drawList->AddText(ImVec2(windowPos.x + 10, windowPos.y + (headerHeight - leftTextSize.y) * 0.5f), ImGui::ColorConvertFloat4ToU32(COLOR_CHECK_MARK), leftText);
+            
+            // Title Text on the Right
+            const char* titleText = "Unity ESP Auto Update";
+            ImVec2 textSize = ImGui::CalcTextSize(titleText);
+            drawList->AddText(ImVec2(windowPos.x + windowSize.x - textSize.x - 10, windowPos.y + (headerHeight - textSize.y) * 0.5f), ImGui::ColorConvertFloat4ToU32(COLOR_CHECK_MARK), titleText);
+
+            // Centered Logo
+            ImTextureID logoTex = getLogoTexture();
+            if (logoTex) {
+                 float logoW = getLogoImageWidth();
+                 float logoH = getLogoImageHeight();
+                 
+                 float maxLogoH = headerHeight - 4.0f; 
+                 float scale = maxLogoH / logoH;
+                 float drawW = logoW * scale;
+                 float drawH = logoH * scale;
+
+                 float logoX = windowPos.x + (windowSize.x - drawW) * 0.5f;
+                 float logoY = windowPos.y + (headerHeight - drawH) * 0.5f;
+
+                 drawList->AddImage(logoTex, ImVec2(logoX, logoY), ImVec2(logoX + drawW, logoY + drawH));
             }
-            
-            ImFont* font = ImGui::GetFont();
-            
-            // Render ESP with fixed font scale (ignoring user settings)
-            if (font && font->FontSize > 0) {
-                font->Scale = 12.f / 18.0f; // Fixed scale for ESP
+
+            // Drag Area (Invisible Button)
+            ImGui::SetCursorPos(ImVec2(0, 0));
+            ImGui::InvisibleButton("##HeaderDrag", ImVec2(windowSize.x - 30, headerHeight));
+            if (ImGui::IsItemActive()) {
+                ImVec2 delta = ImGui::GetIO().MouseDelta;
+                ImGui::SetWindowPos(ImVec2(windowPos.x + delta.x, windowPos.y + delta.y));
             }
+
+            // --- CONTENT CHILD WINDOW START ---
+            ImGui::SetCursorPos(ImVec2(contentPadding, headerHeight + contentPadding));
+            float contentHeight = windowSize.y - headerHeight - footerHeight - (contentPadding * 2);
+            float contentWidth = windowSize.x - (contentPadding * 2);
             
-            CGFloat x = (([UIScreen mainScreen].bounds.size.width) - 360) / 2;
-            CGFloat y = (([UIScreen mainScreen].bounds.size.height) - 300) / 2;
-            
-            ImGui::SetNextWindowPos(ImVec2(x, y), ImGuiCond_FirstUseEver);
-            ImGui::SetNextWindowSize(ImVec2(400, 300), ImGuiCond_FirstUseEver);
-            
-            if (MenDeal == true && [IL2CPPInit isInitializationComplete])
-            {            
-                // Set font scale to user preference for the main menu content
-                if (font) font->Scale = ui_scale;
-
-                ImGui::Begin("GoodFeelings | https://goodfeelings.cc", &MenDeal, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoCollapse);
-
-                ImDrawList* drawList = ImGui::GetWindowDrawList();
-                ImVec2 windowPos = ImGui::GetWindowPos();
-                ImVec2 windowSize = ImGui::GetWindowSize();
-                float headerHeight = 25.0f;
-                float footerHeight = 25.0f; // Define footer height here for calculation
-                float contentPadding = 10.0f; // Padding for content
-                
-                // Draw Header Background
-                drawList->AddRectFilled(windowPos, ImVec2(windowPos.x + windowSize.x, windowPos.y + headerHeight), ImGui::ColorConvertFloat4ToU32(COLOR_TITLE_BG), ImGui::GetStyle().WindowRounding, ImDrawFlags_RoundCornersTop);
-                drawList->AddLine(ImVec2(windowPos.x, windowPos.y + headerHeight), ImVec2(windowPos.x + windowSize.x, windowPos.y + headerHeight), ImGui::ColorConvertFloat4ToU32(COLOR_BORDER));
-
-                // Title Text on the Left
-                const char* leftText = "GoodFeelings";
-                ImVec2 leftTextSize = ImGui::CalcTextSize(leftText);
-                drawList->AddText(ImVec2(windowPos.x + 10, windowPos.y + (headerHeight - leftTextSize.y) * 0.5f), ImGui::ColorConvertFloat4ToU32(COLOR_CHECK_MARK), leftText);
-                
-                // Title Text on the Right
-                const char* titleText = "Unity ESP Auto Update";
-                ImVec2 textSize = ImGui::CalcTextSize(titleText);
-                drawList->AddText(ImVec2(windowPos.x + windowSize.x - textSize.x - 10, windowPos.y + (headerHeight - textSize.y) * 0.5f), ImGui::ColorConvertFloat4ToU32(COLOR_CHECK_MARK), titleText);
-
-                // Centered Logo
-                ImTextureID logoTex = getLogoTexture();
-                if (logoTex) {
-                     float logoW = getLogoImageWidth();
-                     float logoH = getLogoImageHeight();
-                     
-                     // Keep logo aspect ratio, fit within header height with some padding
-                     float maxLogoH = headerHeight - 4.0f; 
-                     float scale = maxLogoH / logoH;
-                     float drawW = logoW * scale;
-                     float drawH = logoH * scale;
-
-                     float logoX = windowPos.x + (windowSize.x - drawW) * 0.5f;
-                     float logoY = windowPos.y + (headerHeight - drawH) * 0.5f;
-
-                     drawList->AddImage(logoTex, ImVec2(logoX, logoY), ImVec2(logoX + drawW, logoY + drawH));
-                }
-
-                // Drag Area (Invisible Button)
-                ImGui::SetCursorPos(ImVec2(0, 0));
-                ImGui::InvisibleButton("##HeaderDrag", ImVec2(windowSize.x - 30, headerHeight));
-                if (ImGui::IsItemActive()) {
-                    ImVec2 delta = ImGui::GetIO().MouseDelta;
-                    ImGui::SetWindowPos(ImVec2(windowPos.x + delta.x, windowPos.y + delta.y));
-                }
-
-                // --- CONTENT CHILD WINDOW START ---
-                // Positioning the content with padding, below header and above footer
-                ImGui::SetCursorPos(ImVec2(contentPadding, headerHeight + contentPadding));
-                float contentHeight = windowSize.y - headerHeight - footerHeight - (contentPadding * 2);
-                float contentWidth = windowSize.x - (contentPadding * 2);
-                
-                if (ImGui::BeginChild("##MainContent", ImVec2(contentWidth, contentHeight), false, ImGuiWindowFlags_NoBackground))
+            if (ImGui::BeginChild("##MainContent", ImVec2(contentWidth, contentHeight), false, ImGuiWindowFlags_NoBackground))
+            {
+                if (ImGui::BeginTabBar("MainTabBar"))
                 {
-                    // --- TAB BAR START ---
-                    if (ImGui::BeginTabBar("MainTabBar"))
+                    if (ImGui::BeginTabItem(ICON_FA_EYE " ESP"))
                     {
-                        if (ImGui::BeginTabItem(ICON_FA_EYE " ESP"))
-                        {
                         ImGui::Checkbox(ICON_FA_EYE " ESP Enable", &esp_enabled);
                         ImGui::Separator();
                         
                         if (esp_enabled) {
-                            // --- Target Selection ---
                             static bool firstInit = true;
                             if (firstInit) {
                                 UpdateAssemblies();
@@ -784,7 +764,7 @@ static bool MenDeal = true;
                                         assembly_idx = i;
                                         selected_assembly = available_assemblies[i];
                                         UpdateClasses(selected_assembly);
-                                        class_idx = -1; // Reset class when assembly changes
+                                        class_idx = -1;
                                     }
                                 }
                                 ImGui::EndCombo();
@@ -852,7 +832,6 @@ static bool MenDeal = true;
                             }
                             
                             ImGui::Checkbox(ICON_FA_RULER " ESP Distance", &esp_distance_enabled);
-                            
                             ImGui::Checkbox(ICON_FA_BONE " ESP Skeleton", &esp_skeleton);
                             
                             updateESPVariables(esp_line, esp_distance_enabled, esp_skeleton, esp_line_position, esp_box_2d, esp_box_3d, esp_corners);
@@ -867,70 +846,59 @@ static bool MenDeal = true;
                         ImGui::EndTabItem();
                     }
                     
-                    
                 ImGui::EndTabBar();
                 }
-                } // Closes BeginChild
-                ImGui::EndChild(); // End MainContent
-                // --- CONTENT CHILD WINDOW END ---
-
-                // Custom Footer
-                ImVec2 footerPos = ImVec2(windowPos.x, windowPos.y + windowSize.y - footerHeight);
-                // Footer Background
-                drawList->AddRectFilled(footerPos, ImVec2(windowPos.x + windowSize.x, footerPos.y + footerHeight), ImGui::ColorConvertFloat4ToU32(COLOR_TITLE_BG), ImGui::GetStyle().WindowRounding, ImDrawFlags_RoundCornersBottom);
-                // Top border of footer
-                drawList->AddLine(footerPos, ImVec2(footerPos.x + windowSize.x, footerPos.y), ImGui::ColorConvertFloat4ToU32(COLOR_BORDER));
-
-                static char footerTime[64];
-                time_t now = time(0);
-                struct tm tstruct;
-                tstruct = *localtime(&now);
-                strftime(footerTime, sizeof(footerTime), "%Y-%m-%d %H:%M:%S", &tstruct);
-
-                NSString *gameNameStr = [[NSBundle mainBundle] infoDictionary][@"CFBundleDisplayName"] ?: [[NSBundle mainBundle] infoDictionary][@"CFBundleName"] ?: @"Game";
-                NSString *bundleIDStr = [[NSBundle mainBundle] bundleIdentifier] ?: @"com.unknown.game";
-                NSString *versionStr = [[NSBundle mainBundle] infoDictionary][@"CFBundleShortVersionString"] ?: @"1.0";
-                
-                const char* gameInfo = [[NSString stringWithFormat:@"%@ | v%@", gameNameStr, versionStr] UTF8String];
-                const char* urlStr = "https://goodfeelings.cc";
-
-                float centerY = footerPos.y + (footerHeight - ImGui::GetTextLineHeight()) * 0.5f;
-
-                // Left: Time
-                drawList->AddText(ImVec2(footerPos.x + 10, centerY), ImGui::ColorConvertFloat4ToU32(ImVec4(0.6f, 0.6f, 0.6f, 1.0f)), footerTime);
-
-                // Center: URL
-                float urlWidth = ImGui::CalcTextSize(urlStr).x;
-                drawList->AddText(ImVec2(footerPos.x + (windowSize.x - urlWidth) * 0.5f, centerY), ImGui::ColorConvertFloat4ToU32(COLOR_CHECK_MARK), urlStr);
-
-                // Right: Game Info
-                float infoWidth = ImGui::CalcTextSize(gameInfo).x;
-                drawList->AddText(ImVec2(footerPos.x + windowSize.x - infoWidth - 10, centerY), ImGui::ColorConvertFloat4ToU32(ImVec4(0.6f, 0.6f, 0.6f, 1.0f)), gameInfo);
-
-                ImGui::End();
-                
-                // --- DEBUG OVERLAY REMOVED ---
-                
             }
-            ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
+            ImGui::EndChild();
 
-            if (esp_enabled) {
-                drawPlayerRootESP(draw_list);
-            }
+            // Custom Footer
+            ImVec2 footerPos = ImVec2(windowPos.x, windowPos.y + windowSize.y - footerHeight);
+            drawList->AddRectFilled(footerPos, ImVec2(windowPos.x + windowSize.x, footerPos.y + footerHeight), ImGui::ColorConvertFloat4ToU32(COLOR_TITLE_BG), ImGui::GetStyle().WindowRounding, ImDrawFlags_RoundCornersBottom);
+            drawList->AddLine(footerPos, ImVec2(footerPos.x + windowSize.x, footerPos.y), ImGui::ColorConvertFloat4ToU32(COLOR_BORDER));
 
+            static char footerTime[64];
+            time_t now = time(0);
+            struct tm tstruct;
+            tstruct = *localtime(&now);
+            strftime(footerTime, sizeof(footerTime), "%Y-%m-%d %H:%M:%S", &tstruct);
 
+            NSString *gameNameStr = [[NSBundle mainBundle] infoDictionary][@"CFBundleDisplayName"] ?: [[NSBundle mainBundle] infoDictionary][@"CFBundleName"] ?: @"Game";
+            NSString *bundleIDStr = [[NSBundle mainBundle] bundleIdentifier] ?: @"com.unknown.game";
+            NSString *versionStr = [[NSBundle mainBundle] infoDictionary][@"CFBundleShortVersionString"] ?: @"1.0";
+            
+            const char* gameInfo = [[NSString stringWithFormat:@"%@ | v%@", gameNameStr, versionStr] UTF8String];
+            const char* urlStr = "https://goodfeelings.cc";
 
-            ImGui::Render();
-            ImDrawData* draw_data = ImGui::GetDrawData();
-            ImGui_ImplMetal_RenderDrawData(draw_data, commandBuffer, renderEncoder);
-          
-            [renderEncoder popDebugGroup];
-            [renderEncoder endEncoding];
+            float centerY = footerPos.y + (footerHeight - ImGui::GetTextLineHeight()) * 0.5f;
 
-            [commandBuffer presentDrawable:view.currentDrawable];
+            drawList->AddText(ImVec2(footerPos.x + 10, centerY), ImGui::ColorConvertFloat4ToU32(ImVec4(0.6f, 0.6f, 0.6f, 1.0f)), footerTime);
+
+            float urlWidth = ImGui::CalcTextSize(urlStr).x;
+            drawList->AddText(ImVec2(footerPos.x + (windowSize.x - urlWidth) * 0.5f, centerY), ImGui::ColorConvertFloat4ToU32(COLOR_CHECK_MARK), urlStr);
+
+            float infoWidth = ImGui::CalcTextSize(gameInfo).x;
+            drawList->AddText(ImVec2(footerPos.x + windowSize.x - infoWidth - 10, centerY), ImGui::ColorConvertFloat4ToU32(ImVec4(0.6f, 0.6f, 0.6f, 1.0f)), gameInfo);
+
+            ImGui::End();
+        }
+        
+        ImDrawList* draw_list = ImGui::GetBackgroundDrawList();
+
+        if (esp_enabled) {
+            drawPlayerRootESP(draw_list);
         }
 
-        [commandBuffer commit];
+        ImGui::Render();
+        ImDrawData* draw_data = ImGui::GetDrawData();
+        ImGui_ImplMetal_RenderDrawData(draw_data, commandBuffer, renderEncoder);
+      
+        [renderEncoder popDebugGroup];
+        [renderEncoder endEncoding];
+
+        [commandBuffer presentDrawable:view.currentDrawable];
+    }
+
+    [commandBuffer commit];
 }
 
 - (void)mtkView:(MTKView*)view drawableSizeWillChange:(CGSize)size
@@ -939,4 +907,3 @@ static bool MenDeal = true;
 }
 
 @end
-
