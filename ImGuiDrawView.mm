@@ -28,25 +28,128 @@
 
 #include "IL2CPP/Hooks.h"
 #include "Resources/Textures/Logo/LogoData.h"
-#include "DrawHelpers.mm"
+
+// ============================================================
+// ВСЕ ФУНКЦИИ РИСОВАНИЯ ТЕПЕРЬ ЗДЕСЬ (без дублирования)
+// ============================================================
+
+static inline UIColor* UIColorFromImU32(ImU32 color) {
+    return [UIColor colorWithRed:((color >> IM_COL32_R_SHIFT) & 0xFF) / 255.0f
+                           green:((color >> IM_COL32_G_SHIFT) & 0xFF) / 255.0f
+                            blue:((color >> IM_COL32_B_SHIFT) & 0xFF) / 255.0f
+                           alpha:((color >> IM_COL32_A_SHIFT) & 0xFF) / 255.0f];
+}
+
+void DrawESPLine(CGContextRef context, ImVec2 start, ImVec2 end, ImU32 color, float thickness) {
+    if (!context) return;
+    CGContextSetStrokeColorWithColor(context, [UIColor colorWithWhite:0.0 alpha:0.5].CGColor);
+    CGContextSetLineWidth(context, thickness + 1.0f);
+    CGContextMoveToPoint(context, start.x, start.y);
+    CGContextAddLineToPoint(context, end.x, end.y);
+    CGContextStrokePath(context);
+    
+    CGContextSetStrokeColorWithColor(context, UIColorFromImU32(color).CGColor);
+    CGContextSetLineWidth(context, thickness);
+    CGContextMoveToPoint(context, start.x, start.y);
+    CGContextAddLineToPoint(context, end.x, end.y);
+    CGContextStrokePath(context);
+}
+
+void DrawESPBox2D(CGContextRef context, ImVec2 min, ImVec2 max, ImU32 color, float thickness) {
+    if (!context) return;
+    CGRect rect = CGRectMake(min.x, min.y, max.x - min.x, max.y - min.y);
+    CGContextSetStrokeColorWithColor(context, [UIColor colorWithWhite:0.0 alpha:0.5].CGColor);
+    CGContextSetLineWidth(context, thickness + 1.0f);
+    CGContextStrokeRect(context, rect);
+    
+    CGContextSetStrokeColorWithColor(context, UIColorFromImU32(color).CGColor);
+    CGContextSetLineWidth(context, thickness);
+    CGContextStrokeRect(context, rect);
+}
+
+void DrawESPBox3D(CGContextRef context, ImVec2 pts[8], bool visible[8], ImU32 color, float thickness) {
+    if (!context) return;
+    static int edges[12][2] = {{0,1}, {1,2}, {2,3}, {3,0}, {4,5}, {5,6}, {6,7}, {7,4}, {0,4}, {1,5}, {2,6}, {3,7}};
+    CGContextSetStrokeColorWithColor(context, UIColorFromImU32(color).CGColor);
+    CGContextSetLineWidth(context, thickness);
+    for (int eidx = 0; eidx < 12; eidx++) {
+        int a = edges[eidx][0], b = edges[eidx][1];
+        if (visible[a] && visible[b]) {
+            CGContextMoveToPoint(context, pts[a].x, pts[a].y);
+            CGContextAddLineToPoint(context, pts[b].x, pts[b].y);
+            CGContextStrokePath(context);
+        }
+    }
+}
+
+void DrawESPCorners(CGContextRef context, ImVec2 min, ImVec2 max, float length, ImU32 color, float thickness) {
+    if (!context) return;
+    CGContextSetStrokeColorWithColor(context, UIColorFromImU32(color).CGColor);
+    CGContextSetLineWidth(context, thickness);
+    
+    CGContextMoveToPoint(context, min.x, min.y);
+    CGContextAddLineToPoint(context, min.x + length, min.y);
+    CGContextMoveToPoint(context, min.x, min.y);
+    CGContextAddLineToPoint(context, min.x, min.y + length);
+    
+    CGContextMoveToPoint(context, max.x, min.y);
+    CGContextAddLineToPoint(context, max.x - length, min.y);
+    CGContextMoveToPoint(context, max.x, min.y);
+    CGContextAddLineToPoint(context, max.x, min.y + length);
+    
+    CGContextMoveToPoint(context, min.x, max.y);
+    CGContextAddLineToPoint(context, min.x + length, max.y);
+    CGContextMoveToPoint(context, min.x, max.y);
+    CGContextAddLineToPoint(context, min.x, max.y - length);
+    
+    CGContextMoveToPoint(context, max.x, max.y);
+    CGContextAddLineToPoint(context, max.x - length, max.y);
+    CGContextMoveToPoint(context, max.x, max.y);
+    CGContextAddLineToPoint(context, max.x, max.y - length);
+    
+    CGContextStrokePath(context);
+}
+
+void DrawESPDistance(CGContextRef context, ImVec2 position, float distance, ImU32 color) {
+    if (!context) return;
+    char distBuf[32];
+    snprintf(distBuf, sizeof(distBuf), "%dM", (int)distance);
+    NSString *text = [NSString stringWithUTF8String:distBuf];
+    
+    NSDictionary *shadowAttributes = @{
+        NSFontAttributeName: [UIFont systemFontOfSize:12 weight:UIFontWeightBold],
+        NSForegroundColorAttributeName: [UIColor blackColor]
+    };
+    NSDictionary *textAttributes = @{
+        NSFontAttributeName: [UIFont systemFontOfSize:12 weight:UIFontWeightBold],
+        NSForegroundColorAttributeName: UIColorFromImU32(color)
+    };
+    CGPoint drawPoint = CGPointMake(position.x + 5, position.y - 12);
+    [text drawAtPoint:CGPointMake(drawPoint.x + 1, drawPoint.y + 1) withAttributes:shadowAttributes];
+    [text drawAtPoint:drawPoint withAttributes:textAttributes];
+}
+
+// ============================================================
+// КОНЕЦ ФУНКЦИЙ РИСОВАНИЯ
+// ============================================================
 
 // ImGui Color Variables - custom dark theme
-static const ImVec4 COLOR_WINDOW_BG = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);    // #141414
-static const ImVec4 COLOR_FRAME_BG = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);       // Match window background
-static const ImVec4 COLOR_CHILD_BG = ImVec4(0.09f, 0.09f, 0.09f, 1.00f);       // Original column background
-static const ImVec4 COLOR_BUTTON = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);        // Match window background
-static const ImVec4 COLOR_BUTTON_HOVERED = ImVec4(0.12f, 0.12f, 0.12f, 1.00f);  // Darker hover
-static const ImVec4 COLOR_BUTTON_ACTIVE = ImVec4(0.15f, 0.15f, 0.15f, 1.00f);   // Darker active
-static const ImVec4 COLOR_TITLE_BG = ImVec4(0.09f, 0.09f, 0.09f, 1.00f);       // #171717
-static const ImVec4 COLOR_TITLE_BG_ACTIVE = ImVec4(0.12f, 0.12f, 0.12f, 1.00f); // Darker active
-static const ImVec4 COLOR_CHECK_MARK = ImVec4(1.00f, 0.00f, 0.28f, 1.00f);     // 255, 0, 72
-static const ImVec4 COLOR_SLIDER_GRAB = ImVec4(1.00f, 0.00f, 0.28f, 1.00f);       // 255, 0, 72
-static const ImVec4 COLOR_TEXT = ImVec4(0.92f, 0.92f, 0.92f, 1.00f);           // Light text
-static const ImVec4 COLOR_BORDER = ImVec4(0.20f, 0.20f, 0.20f, 0.50f);         // Border
-static const ImVec4 COLOR_SEPARATOR = ImVec4(0.20f, 0.20f, 0.20f, 0.50f);      // Separator
-static const ImVec4 COLOR_HEADER = ImVec4(0.09f, 0.09f, 0.09f, 1.00f);        // #171717
-static const ImVec4 COLOR_HEADER_HOVERED = ImVec4(0.12f, 0.12f, 0.12f, 1.00f); // Darker hover
-static const ImVec4 COLOR_HEADER_ACTIVE = ImVec4(0.15f, 0.15f, 0.15f, 1.00f);  // Darker active
+static const ImVec4 COLOR_WINDOW_BG = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
+static const ImVec4 COLOR_FRAME_BG = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
+static const ImVec4 COLOR_CHILD_BG = ImVec4(0.09f, 0.09f, 0.09f, 1.00f);
+static const ImVec4 COLOR_BUTTON = ImVec4(0.08f, 0.08f, 0.08f, 1.00f);
+static const ImVec4 COLOR_BUTTON_HOVERED = ImVec4(0.12f, 0.12f, 0.12f, 1.00f);
+static const ImVec4 COLOR_BUTTON_ACTIVE = ImVec4(0.15f, 0.15f, 0.15f, 1.00f);
+static const ImVec4 COLOR_TITLE_BG = ImVec4(0.09f, 0.09f, 0.09f, 1.00f);
+static const ImVec4 COLOR_TITLE_BG_ACTIVE = ImVec4(0.12f, 0.12f, 0.12f, 1.00f);
+static const ImVec4 COLOR_CHECK_MARK = ImVec4(1.00f, 0.00f, 0.28f, 1.00f);
+static const ImVec4 COLOR_SLIDER_GRAB = ImVec4(1.00f, 0.00f, 0.28f, 1.00f);
+static const ImVec4 COLOR_TEXT = ImVec4(0.92f, 0.92f, 0.92f, 1.00f);
+static const ImVec4 COLOR_BORDER = ImVec4(0.20f, 0.20f, 0.20f, 0.50f);
+static const ImVec4 COLOR_SEPARATOR = ImVec4(0.20f, 0.20f, 0.20f, 0.50f);
+static const ImVec4 COLOR_HEADER = ImVec4(0.09f, 0.09f, 0.09f, 1.00f);
+static const ImVec4 COLOR_HEADER_HOVERED = ImVec4(0.12f, 0.12f, 0.12f, 1.00f);
+static const ImVec4 COLOR_HEADER_ACTIVE = ImVec4(0.15f, 0.15f, 0.15f, 1.00f);
 #import <Foundation/Foundation.h>
 #import <os/log.h>
 #import "pthread.h"
@@ -181,6 +284,146 @@ void UpdateClasses(const std::string& assemblyName) {
     }
 }
 
+void DrawESPSkeleton(CGContextRef context, void* camera, void* gameObject, Vector3 cameraPosition, float distanceToCamera) {
+    // Реализация скелетона
+    if (!context || !gameObject) return;
+    
+    void* GameObjectType = Type_GetType(String_CreateString(CREATE_TYPE_STRING(GAMEOBJECT_CLASS_NAME, GAMEOBJECT_ASSEMBLY_NAME)));
+    if (!GameObjectType) return;
+    
+    monoArray<void**>* allGameObjects = Object_FindObjectsOfType(GameObjectType);
+    if (!allGameObjects) return;
+    
+    for (int i = 0; i < allGameObjects->getLength(); i++) {
+        void* gameObject = allGameObjects->getPointer()[i];
+        if (!gameObject || !GameObject_get_activeInHierarchy(gameObject)) continue;
+        
+        void* transform = GameObject_get_transform(gameObject);
+        if (!transform) continue;
+        
+        Vector3 position = Transform_get_position(transform);
+        if (position.x == 0 && position.y == 0 && position.z == 0) continue;
+        
+        float distanceToCamera = Vector3::Distance(cameraPosition, position);
+        if (distanceToCamera > ESP_MAX_DISTANCE) continue;
+        
+        void* foundSkinned = nullptr;
+        void* ComponentType = Type_GetType(String_CreateString(CREATE_TYPE_STRING(COMPONENT_CLASS_NAME, COMPONENT_ASSEMBLY_NAME)));
+        monoArray<void**>* componentArrayForDraw = GameObject_GetComponentsInternal(gameObject, ComponentType, false, false, false, false, nullptr);
+        
+        if (componentArrayForDraw) {
+            for (int jj = 0; jj < componentArrayForDraw->getLength(); jj++) {
+                void* compPtr = componentArrayForDraw->getPointer()[jj];
+                if (!compPtr) continue;
+                Il2CppClassMetadata* meta = *(Il2CppClassMetadata**)compPtr;
+                const char* klass = meta->name;
+                const char* namespaze = meta->namespaze;
+                std::string typeKey = (namespaze && strlen(namespaze) > 0) ? (std::string(namespaze) + "." + std::string(klass)) : std::string(klass);
+                
+                if (typeKey.find(SKINNED_MESH_RENDERER_CLASS_NAME) != std::string::npos) {
+                    foundSkinned = compPtr;
+                    break;
+                }
+            }
+        }
+        
+        if (foundSkinned) {
+            monoArray<void**>* bones = SkinnedMeshRenderer_get_bones(foundSkinned);
+            if (bones && bones->getLength() > MIN_BONE_COUNT) {
+                const int boneCount = bones->getLength();
+                
+                struct BoneInfo {
+                    void* transform;
+                    int parentIndex;
+                    Vector3 worldPos;
+                    ImVec2 screenPos;
+                    bool isVisible;
+                    bool isImportant;
+                    float importance;
+                };
+                
+                std::vector<BoneInfo> boneInfos;
+                boneInfos.reserve(boneCount);
+                
+                for (int bi = 0; bi < boneCount; bi++) {
+                    void* boneTr = bones->getPointer()[bi];
+                    if (!boneTr) continue;
+                    
+                    BoneInfo info = {};
+                    info.transform = boneTr;
+                    info.worldPos = Transform_get_position(boneTr);
+                    info.parentIndex = -1;
+                    
+                    void* parentTr = Transform_get_parent(boneTr);
+                    if (parentTr) {
+                        for (int pi = 0; pi < boneCount; pi++) {
+                            if (bones->getPointer()[pi] == parentTr) {
+                                info.parentIndex = pi;
+                                break;
+                            }
+                        }
+                    }
+                    
+                    Vector3 sp; bool vis;
+                    WorldToScreen(camera, info.worldPos, sp, vis);
+                    info.screenPos = ImVec2(sp.x, sp.y);
+                    info.isVisible = vis;
+                    
+                    int childCount = Transform_get_childCount(boneTr);
+                    if (childCount >= 3) info.importance = 1.0f;
+                    else if (childCount == 2) info.importance = 0.8f;
+                    else if (childCount == 1) info.importance = 0.6f;
+                    else info.importance = 0.4f;
+                    
+                    info.isImportant = (info.importance >= 0.8f);
+                    boneInfos.push_back(info);
+                }
+                
+                for (size_t bi = 0; bi < boneInfos.size(); bi++) {
+                    const BoneInfo& bone = boneInfos[bi];
+                    
+                    if (bone.parentIndex == -1 || bone.parentIndex >= (int)boneInfos.size()) continue;
+                    if (!bone.isVisible) continue;
+                    
+                    const BoneInfo& parent = boneInfos[bone.parentIndex];
+                    if (!parent.isVisible) continue;
+                    
+                    float boneDist = Vector3::Distance(bone.worldPos, parent.worldPos);
+                    float maxDist = bone.isImportant ? MAX_BONE_DISTANCE_IMPORTANT : MAX_BONE_DISTANCE_NORMAL;
+                    if (boneDist < 0.01f || boneDist > maxDist) continue;
+                    
+                    float finalThickness = ESP_SKELETON_THICKNESS;
+                    
+                    ImU32 boneColor;
+                    if (bone.isImportant) {
+                        boneColor = ESP_SKELETON_COLOR_IMPORTANT;
+                    } else {
+                        boneColor = ESP_SKELETON_COLOR_NORMAL;
+                    }
+                    
+                    float distance = Vector3::Distance(cameraPosition, bone.worldPos);
+                    float alpha = std::max(0.4f, 1.0f - (distance * 0.02f));
+                    boneColor = IM_COL32(
+                        (boneColor >> IM_COL32_R_SHIFT) & 0xFF,
+                        (boneColor >> IM_COL32_G_SHIFT) & 0xFF,
+                        (boneColor >> IM_COL32_B_SHIFT) & 0xFF,
+                        (int)(255 * alpha)
+                    );
+                    
+                    ImVec2 boneScreenPos = bone.screenPos;
+                    ImVec2 parentScreenPos = parent.screenPos;
+                    
+                    CGContextSetStrokeColorWithColor(context, UIColorFromImU32(boneColor).CGColor);
+                    CGContextSetLineWidth(context, finalThickness);
+                    CGContextMoveToPoint(context, parentScreenPos.x, parentScreenPos.y);
+                    CGContextAddLineToPoint(context, boneScreenPos.x, boneScreenPos.y);
+                    CGContextStrokePath(context);
+                }
+            }
+        }
+    }
+}
+
 void drawPlayerRootESP(ImDrawList* draw_list) {
     if (!esp_line && !esp_distance_enabled && !esp_skeleton && !esp_box_2d && !esp_box_3d && !esp_corners) return;
     
@@ -307,7 +550,6 @@ void drawPlayerRootESP(ImDrawList* draw_list) {
         ImU32 themePink = ESP_LINE_COLOR;
 
         // ========== РИСУЕМ В ОТДЕЛЬНОМ ОКНЕ ==========
-        // Копируем данные в отдельные переменные
         ImVec2 ptsCopy[8];
         bool cornerVisibleCopy[8];
         for (int k = 0; k < 8; k++) {
@@ -315,7 +557,6 @@ void drawPlayerRootESP(ImDrawList* draw_list) {
             cornerVisibleCopy[k] = cornerVisible[k];
         }
         
-        // Передаем указатели на массивы
         ImVec2* ptsPtr = ptsCopy;
         bool* cornerPtr = cornerVisibleCopy;
         
@@ -335,10 +576,8 @@ void drawPlayerRootESP(ImDrawList* draw_list) {
             if (esp_corners) DrawESPCorners(context, ImVec2(minX, minY), ImVec2(maxX, maxY), std::max(8.0f, std::min(maxX-minX, maxY-minY)*0.25f), themePink, dynamicThickness);
             if (esp_distance_enabled) DrawESPDistance(context, ImVec2(w2sPosition.x, w2sPosition.y), distToCamera, ESP_DISTANCE_COLOR);
         }];
-        // =====================================================
     }
     
-    // ========== СКЕЛЕТОН РИСУЕМ ОТДЕЛЬНО ==========
     if (esp_skeleton) {
         [[ESPRenderer sharedInstance] renderESP:^(CGContextRef context) {
             DrawESPSkeleton(context, camera, (void*)1, cameraPosition, 0.0f);
@@ -347,8 +586,7 @@ void drawPlayerRootESP(ImDrawList* draw_list) {
 }
 
 // =================================================================
-// ВНИМАНИЕ! Все функции рисования (DrawESPLine, DrawESPBox2D и т.д.)
-//          теперь находятся в отдельном файле DrawHelpers.mm.
+// ДАЛЬШЕ ВЕСЬ ОСТАЛЬНОЙ КОД (классы, методы) БЕЗ ИЗМЕНЕНИЙ
 // =================================================================
 
 @interface ImGuiMTKView : MTKView
